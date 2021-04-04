@@ -27,7 +27,9 @@ runs:
     shell: bash
 
   - name: Run The Pull Request Merger
+    env:
+      GH_TOKEN: ${{ github.token }}
     run: |
       cd $GITHUB_WORKSPACE
-      python3 ${{ github.action_path }}/library_multi_pull_requests.py 1 $GITHUB_REPOSITORY 2 ${{ github.token }} 3 $EXTERNAL_PATH
+      python3 ${{ github.action_path }}/library_multi_pull_requests.py 1 $GITHUB_REPOSITORY 2 $EXTERNAL_PATH
     shell: bash

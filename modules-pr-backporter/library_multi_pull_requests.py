@@ -31,13 +31,20 @@ from library_patch_submodules import library_clean_submodules
 __dir__ = os.path.dirname(__file__)
 
 
+# Figure out the GitHub access token.
+ACCESS_TOKEN = os.environ.get('GH_TOKEN', None)
+if not ACCESS_TOKEN:
+    ACCESS_TOKEN = os.environ.get('GITHUB_TOKEN', None)
+
+if ACCESS_TOKEN is None:
+    raise SystemError('Did not find an access token of `GH_TOKEN` or `GITHUB_TOKEN`')
+
+
 def handle_pull_requests(args):
     print(args)
-    assert len(args) == 6
+    assert len(args) == 4
     dmp = args.pop(0)
     repo_name = args.pop(0)
-    dmp = args.pop(0)
-    access_token = args.pop(0)
     dmp = args.pop(0)
     external_path = args.pop(0)
     print(dmp)
@@ -85,7 +92,7 @@ def handle_pull_requests(args):
         print("Will try to apply: ", patchfile)
 
         if library_patch_submodules(
-                patchfile, pull_request_id, repo_name, access_token,
+                patchfile, pull_request_id, repo_name, ACCESS_TOKEN,
                 commit_hash):
             print()
             print("Pull Request Handled: ", str(pull_request_id))
@@ -94,7 +101,7 @@ def handle_pull_requests(args):
                 print("PR {0} is now ready to be merged.."
                       .format(pull_request_id))
                 library_merge_submodules(
-                    pull_request_id, repo_name, access_token)
+                    pull_request_id, repo_name, ACCESS_TOKEN)
         print("Resetting Branches")
         reset_branches(git_root)
         print("Reset Branches Done!")
