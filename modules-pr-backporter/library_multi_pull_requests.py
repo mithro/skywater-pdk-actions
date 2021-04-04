@@ -28,8 +28,6 @@ from library_patch_submodules import library_patch_submodules
 from library_patch_submodules import library_merge_submodules
 from library_patch_submodules import library_clean_submodules
 
-__dir__ = os.path.dirname(__file__)
-
 
 # Figure out the GitHub access token.
 ACCESS_TOKEN = os.environ.get('GH_TOKEN', None)
