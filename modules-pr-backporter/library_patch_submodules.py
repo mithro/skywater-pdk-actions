@@ -17,22 +17,25 @@
 
 import os
 import subprocess
+import requests
 import sys
+
+import library_submodules
+from library_submodules import get_lib_versions
 from library_submodules import git
+from library_submodules import git_clean
+from library_submodules import git_fetch
+from library_submodules import git_issue_close
+from library_submodules import git_issue_comment
+from library_submodules import github_auth_set
 from library_submodules import out_v
 from library_submodules import previous_v
-from library_submodules import git_issue_comment
-from library_submodules import git_issue_close
-from library_submodules import get_git_root
-from library_submodules import git_fetch
-from library_submodules import get_lib_versions
-from library_submodules import git_clean
 
 
 __dir__ = os.path.dirname(__file__)
 
 GH_BACKPORT_NS_TOP = 'backport'
-GH_BACKPORT_NS_PR = GH_BACKPORT_NS_TOP + '/{pr_id}'
+GH_BACKPORT_NS_PR = GH_BACKPORT_NS_TOP + '/pr{pr_id}'
 GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/{seq_id}/{branch}'
 
 
@@ -51,20 +54,39 @@ def get_sequence_number(pull_request_id):
 
 
 def library_patch_submodules(
-        patchfile, pull_request_id, repo_name, access_token, commit_hash):
+        patchfile, pull_request_id, repo_name, access_token, commit_msg_filename):
 
     assert os.path.exists(patchfile), patchfile
     assert os.path.isfile(patchfile), patchfile
 
+    # Get the latest date in the patch file.
+    date = None
+    with open(patchfile) as f:
+        for l in f:
+            if l.startswith('Date: '):
+                prefix, date = l.strip().split(': ', 1)
+                assert prefix == 'Date', (prefix, l)
+    assert date is not None, (data, open(patchfile).read())
+    library_submodules.DATE = date
+    print('Patch date is:', date)
+
+    # Clone the repository in blobless mode.
+    git_root = os.path.abspath(repo_name.replace('/', '--'))
+    if not os.path.exists(git_root):
+        git('clone --filter=blob:none https://github.com/{}.git {}'.format(
+                repo_name, git_root),
+            os.getcwd(),
+        )
+    else:
+        print('Reusing existing clone at:', git_root)
+
+    # Setup the github authentication token to allow pushing.
+    github_auth_set(git_root, access_token)
+
     print()
     print()
-    git_root = get_git_root()
-
-    git_fetch(git_root)
-
     versions = get_lib_versions(git_root)
-    failed = True
-    apply_idx = 0
+    backported_to_version = []
     for i, v in enumerate(versions):
         pv = previous_v(v, versions)
         ov = out_v(v, versions)
@@ -76,30 +98,35 @@ def library_patch_submodules(
         print("Was:", pv, "Now patching", (v_branch, v_tag), "with", patchfile)
         print('-'*20, flush=True)
 
-        # Get us back to a very clean tree.
-        # git('reset --hard HEAD', git_root)
-        git_clean(git_root)
-
         # Checkout the right branch
         git('checkout {0}'.format(v_branch), git_root)
+        git('reset --hard origin/{0}'.format(v_branch), git_root)
+        git_clean(git_root)
 
         diff_pos = 'branch-{}.{}.{}'.format(*pv)
 
         # Update the contents
-        if v == versions[apply_idx]:
-            if git('am {}'.format(patchfile),
-                    git_root, can_fail=True) is False:
-                apply_idx += 1
+        if not backported_to_version:
+            if git('am {}'.format(patchfile), git_root, can_fail=True) is False:
+                git('am --show-current-patch=diff', git_root)
                 git('am --abort', git_root)
-            failed = False
-            continue
+                continue
+
+        backported_to_version.append(v)
+
         # Create the merge commit
-        git('merge {} --no-ff --no-commit --strategy=recursive'
-            .format(diff_pos),
-            git_root)
-        git('commit -C HEAD@{1}', git_root)
-    if failed:
+        if i > 0:
+            git(
+                'merge {} --no-ff --no-commit --strategy=recursive'.format(diff_pos),
+                git_root)
+        git('commit --allow-empty -F {}'.format(commit_msg_filename), git_root)
+
+    if not backported_to_version:
+        print('Patch was unable to be backported!')
         return False
+
+    print('Patch was backported to', backported_to_version)
+
     git('branch -D master', git_root, can_fail=True)
     git('branch master', git_root)
 
@@ -141,10 +168,10 @@ def library_patch_submodules(
         print("Now Pushing", n_branch)
         if git('push -f origin {0}:{1}'.format(v_branch, n_branch),
                 git_root, can_fail=True) is False:
-            print("""\
-Pull Request {0} is coming from a fork and trying to update the workflow. \
-We will skip it!!! \
-""")
+            print("""
+Pull Request {0} is coming from a fork and trying to update the workflow.
+We will skip it!!!
+""".format(pull_request_id))
             return False
 
     print()
@@ -179,7 +206,7 @@ please check the links here:
 def library_merge_submodules(pull_request_id, repo_name, access_token):
     print()
     print()
-    git_root = get_git_root()
+    #git_root = get_git_root() FIXME
 
     git_fetch(git_root)
 
@@ -238,7 +265,7 @@ branches.
 def library_rebase_submodules(pull_request_id):
     print()
     print()
-    git_root = get_git_root()
+    #git_root = get_git_root() FIXME
 
     git_fetch(git_root)
 

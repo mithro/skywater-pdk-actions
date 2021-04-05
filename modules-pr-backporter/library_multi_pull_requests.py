@@ -15,11 +15,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+
+import json
 import os
+import pprint
+import requests
 import subprocess
 import sys
 import urllib3
-import requests
+
+
 from library_submodules import reset_branches
 from library_submodules import label_exists
 from library_submodules import get_git_root
@@ -45,23 +50,17 @@ def handle_pull_requests(args):
     assert not args, args
     print()
     print()
-    my_git_root = get_git_root()
-
-    git_workdir = 'workspace'
-    if not os.path.exists(git_workdir):
-        git('clone --filter=blob:none https://github.com/{}.git {}'.format(
-                repo_name, git_workdir),
-            os.getcwd(),
-        )
-    git_fetch(git_workdir)
+    http = urllib3.PoolManager()
 
     r = requests.get(
         'https://api.github.com/repos/{0}/pulls?state=open'.format(
-            repo_name))
+            repo_name)).json()
+
     all_open_pull_requests = list(
-        sorted(set(str(item['number']) for item in r.json())))
+        sorted(set(str(item['number']) for item in r)))
     pr_hash_list = subprocess.check_output(
-        "git ls-remote origin 'pull/*/head'",
+            "git ls-remote https://github.com/{}.git 'pull/*/head'".format(
+                repo_name),
         shell=True).decode('utf-8').split('\n')
 
     print("All Open Pull Requests: ", all_open_pull_requests)
@@ -75,38 +74,47 @@ def handle_pull_requests(args):
             if 'pull/{0}/head'.format(pull_request_id) in pr_hash:
                 commit_hash = pr_hash.split()[0]
                 break
-        print("head commit hash: ", commit_hash)
+        print("Head commit hash: ", commit_hash)
         print()
+        # Download the patch metadata
+        pr_md = requests.get(
+            'https://api.github.com/repos/{0}/pulls/{1}' .format(
+                repo_name, pull_request_id)).json()
+
+        commit_msg_filename = os.path.abspath(
+            'commit-{0}.msg'.format(pull_request_id))
+        with open(commit_msg_filename, 'w') as f:
+            f.write("Merging #{pr_id} - {title}\n".format(
+                pr_id=pull_request_id, title=pr_md['title']))
+            if pr_md['body'].strip():
+                f.write(pr_md['body'])
+
+        # Download the patch
         print("Getting Patch")
-        print()
-        http = urllib3.PoolManager()
-        patch_request = \
-            http.request('GET',
-                         'https://github.com/{0}/pull/{1}.patch'
-                         .format(repo_name, pull_request_id))
+        patch_request = http.request(
+            'GET',
+            'https://github.com/{0}/pull/{1}.patch' .format(
+                repo_name, pull_request_id))
         if patch_request.status != 200:
             print('Unable to get patch. Skipping...')
             continue
-
-        patchfile = '{0}/{1}.patch'.format(external_path, pull_request_id)
+        patchfile = os.path.abspath('pr-{0}.patch'.format(pull_request_id))
         with open(patchfile, 'w') as f:
             f.write(patch_request.data.decode('utf-8'))
-        print("Will try to apply: ", patchfile)
 
+        # Backport the patch
+        print("Will try to apply: ", patchfile)
         if library_patch_submodules(
-                patchfile, pull_request_id, repo_name, ACCESS_TOKEN,
-                commit_hash):
+                patchfile, pull_request_id, repo_name, ACCESS_TOKEN, commit_msg_filename):
             print()
             print("Pull Request Handled: ", str(pull_request_id))
             print('-'*20, flush=True)
-            if label_exists(repo_name, pull_request_id, 'ready-to-merge'):
-                print("PR {0} is now ready to be merged.."
-                      .format(pull_request_id))
-                library_merge_submodules(
-                    pull_request_id, repo_name, ACCESS_TOKEN)
-        print("Resetting Branches")
-        reset_branches(git_root)
-        print("Reset Branches Done!")
+
+        continue
+        if label_exists(repo_name, pull_request_id, 'ready-to-merge'):
+            print("PR {0} is now ready to be merged..".format(pull_request_id))
+            library_merge_submodules(
+                pull_request_id, repo_name, ACCESS_TOKEN)
 
     print('-'*20, flush=True)
     print("Done Creating PR branches!")

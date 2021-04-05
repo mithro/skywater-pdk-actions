@@ -15,18 +15,22 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import base64
+import json
 import os
+import requests
 import subprocess
 import sys
 import time
-import requests
-import json
 
 
 def run(cmd, **kw):
     sys.stdout.flush()
     sys.stderr.flush()
-    print(cmd, '-'*5, flush=True)
+    if 'config' not in cmd:
+        print(cmd, '-'*5, flush=True)
+    else:
+        print(cmd.split('config')[0], '...', '-'*5, flush=True)
     subprocess.check_call(cmd, shell=True, stderr=subprocess.STDOUT, **kw)
     print('-'*5, flush=True)
     sys.stdout.flush()
@@ -60,6 +64,13 @@ def git(cmd, gitdir, can_fail=False, **kw):
                 time.sleep(10)
                 continue
             raise
+
+
+def github_auth_set(gitdir, access_token):
+    auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
+    extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())
+    git("config http.https://github.com/.extraheader '{}'".format(extra_header),
+        gitdir)
 
 
 def out_v(v, versions):
