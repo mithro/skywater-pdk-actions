@@ -21,7 +21,6 @@ import sys
 from library_submodules import git
 from library_submodules import out_v
 from library_submodules import previous_v
-from library_submodules import get_sequence_number
 from library_submodules import git_issue_comment
 from library_submodules import git_issue_close
 from library_submodules import get_git_root
@@ -32,7 +31,23 @@ from library_submodules import git_clean
 
 __dir__ = os.path.dirname(__file__)
 
-GH_PULLREQUEST_NAMESPACE = 'backport/{pr_id}/{seq_id}/{branch}'
+GH_BACKPORT_NS_TOP = 'backport'
+GH_BACKPORT_NS_PR = GH_BACKPORT_NS_TOP + '/{pr_id}'
+GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/{seq_id}/{branch}'
+
+
+def get_sequence_number(pull_request_id):
+    git_sequence = -1
+    all_branches = subprocess.check_output(
+        'git branch -r', shell=True).decode('utf-8').split()
+    print("All branches:", all_branches)
+    git_matching_branches = [
+        br for br in all_branches
+        if GH_BACKPORT_NS_PR.format(pr_id=pull_request_id) in br]
+
+    for matching_branch in git_matching_branches:
+        git_sequence = max(int(matching_branch.split("/")[4]), git_sequence)
+    return git_sequence
 
 
 def library_patch_submodules(
@@ -94,7 +109,7 @@ def library_patch_submodules(
     sequence_increment = 1
     if old_git_sequence != -1:
         old_pr_branch = \
-            GH_PULLREQUEST_NAMESPACE.format(
+            GH_BACKPORT_NS_BRANCH.format(
                 pr_id=pull_request_id,
                 seq_id=old_git_sequence,
                 branch='master')
@@ -118,7 +133,7 @@ def library_patch_submodules(
         print("Now Pushing", (v_branch, v_tag))
         print('-'*20, flush=True)
 
-        n_branch = GH_PULLREQUEST_NAMESPACE.format(
+        n_branch = GH_BACKPORT_NS_BRANCH.format(
             pr_id=pull_request_id, seq_id=git_sequence, branch=v_branch)
         branch_link = "https://github.com/{0}/tree/{1}".format(
             repo_name, n_branch)
@@ -133,7 +148,7 @@ We will skip it!!! \
             return False
 
     print()
-    n_branch = GH_PULLREQUEST_NAMESPACE.format(
+    n_branch = GH_BACKPORT_NS_BRANCH.format(
         pr_id=pull_request_id, seq_id=git_sequence, branch='master')
     branch_link = "https://github.com/{0}/tree/{1}".format(repo_name, n_branch)
     n_branch_links += "\n- {0}".format(branch_link)
@@ -176,7 +191,7 @@ def library_merge_submodules(pull_request_id, repo_name, access_token):
         v_branch = "branch-{}.{}.{}".format(*ov)
         v_tag = "v{}.{}.{}".format(*ov)
         git_sequence = int(get_sequence_number(pull_request_id))
-        n_branch = GH_PULLREQUEST_NAMESPACE.format(
+        n_branch = GH_BACKPORT_NS_BRANCH.format(
             pr_id=pull_request_id, seq_id=git_sequence, branch=v_branch)
         print()
         print("Was:", pv, "Now updating", (v_branch, v_tag), "with", n_branch)
@@ -193,13 +208,13 @@ def library_merge_submodules(pull_request_id, repo_name, access_token):
         print("Now Pushing", v_branch)
         git('push -f origin {0}:{0}'.format(v_branch), git_root)
         for i in range(git_sequence + 1):
-            d_branch = GH_PULLREQUEST_NAMESPACE.format(
+            d_branch = GH_BACKPORT_NS_BRANCH.format(
                 pr_id=pull_request_id, seq_id=i, branch=v_branch)
             git('push origin --delete {0}'.format(d_branch),
                 git_root)
 
     git_clean(git_root)
-    n_branch = GH_PULLREQUEST_NAMESPACE.format(
+    n_branch = GH_BACKPORT_NS_BRANCH.format(
         pr_id=pull_request_id, seq_id=git_sequence, branch='master')
     git('checkout master', git_root)
     print("Now reseting master to ", n_branch)
@@ -207,7 +222,7 @@ def library_merge_submodules(pull_request_id, repo_name, access_token):
     print("Now Pushing", v_branch)
     git('push -f origin master:master', git_root)
     for i in range(git_sequence + 1):
-        d_branch = GH_PULLREQUEST_NAMESPACE.format(
+        d_branch = GH_BACKPORT_NS_BRANCH.format(
             pr_id=pull_request_id, seq_id=i, branch='master')
         git('push origin --delete {0}'.format(d_branch),
             git_root)
@@ -235,7 +250,7 @@ def library_rebase_submodules(pull_request_id):
         v_branch = "branch-{}.{}.{}".format(*ov)
         v_tag = "v{}.{}.{}".format(*ov)
         git_sequence = int(get_sequence_number(pull_request_id))
-        n_branch = GH_PULLREQUEST_NAMESPACE.format(
+        n_branch = GH_BACKPORT_NS_BRANCH.format(
             pr_id=pull_request_id, seq_id=git_sequence, branch=v_branch)
         print()
         print("Was:", pv,
@@ -254,7 +269,7 @@ def library_rebase_submodules(pull_request_id):
         git('push -f origin {0}:{0}'.format(n_branch), git_root)
 
     git_clean(git_root)
-    n_branch = GH_PULLREQUEST_NAMESPACE.format(
+    n_branch = GH_BACKPORT_NS_BRANCH.format(
         pr_id=pull_request_id, seq_id=git_sequence, branch='master')
     git('checkout {0}'.format(n_branch), git_root)
     git('rebase origin/master', git_root)
@@ -262,22 +277,27 @@ def library_rebase_submodules(pull_request_id):
     git('push -f origin {0}:{0}'.format(n_branch), git_root)
 
 
-def library_clean_submodules(all_open_pull_requests):
+def library_clean_submodules(git_root, all_open_pull_requests):
     print()
     print()
     print("Cleaning up pull request branches for closed pull requests.")
-    git_root = get_git_root()
-
-    git_fetch(git_root)
-
-    all_branches = subprocess.check_output('git branch -r',
-                                           shell=True).decode('utf-8').split()
+    all_branches = subprocess.check_output(
+        'git branch -r', shell=True).decode('utf-8').split()
     print("All branchs:", all_branches)
     for br in all_branches:
-        if "origin/pullrequest/temp/" in br \
-                and br.split('/')[3] not in all_open_pull_requests:
+        if not br.startswith('origin'):
+            continue
+
+        _, branch_name = br.split('/', 1)
+        assert _ == 'origin', (_, branch_name)
+        if not branch_name.startswith(GH_BACKPORT_NS_TOP):
+            print('Skipping:', branch_name)
+            continue
+
+        _, pr, extra = branch_name.split('/', 2)
+        if pr not in all_open_pull_requests:
             print('Deleting ', br)
-            git('push origin --delete {0}'.format(br.split('origin/', 1)[1]),
+            git('push origin --delete {0}'.format(),
                 git_root)
 
 

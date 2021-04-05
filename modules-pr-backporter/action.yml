@@ -22,14 +22,10 @@ description: >
 runs:
   using: "composite"
   steps:
-  - name: Get External Path Name
-    run: echo "EXTERNAL_PATH=$(cd $GITHUB_WORKSPACE/../ && pwd)" >> $GITHUB_ENV
-    shell: bash
-
   - name: Run The Pull Request Merger
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
       cd $GITHUB_WORKSPACE
-      python3 ${{ github.action_path }}/library_multi_pull_requests.py 1 $GITHUB_REPOSITORY 2 $EXTERNAL_PATH
+      python3 ${{ github.action_path }}/library_multi_pull_requests.py $GITHUB_REPOSITORY
     shell: bash

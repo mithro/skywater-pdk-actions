@@ -24,6 +24,7 @@ from library_submodules import reset_branches
 from library_submodules import label_exists
 from library_submodules import get_git_root
 from library_submodules import git_fetch
+from library_submodules import git
 from library_patch_submodules import library_patch_submodules
 from library_patch_submodules import library_merge_submodules
 from library_patch_submodules import library_clean_submodules
@@ -40,28 +41,31 @@ if ACCESS_TOKEN is None:
 
 def handle_pull_requests(args):
     print(args)
-    assert len(args) == 4
-    dmp = args.pop(0)
     repo_name = args.pop(0)
-    dmp = args.pop(0)
-    external_path = args.pop(0)
-    print(dmp)
+    assert not args, args
     print()
     print()
+    my_git_root = get_git_root()
 
-    git_root = get_git_root()
+    git_workdir = 'workspace'
+    if not os.path.exists(git_workdir):
+        git('clone --filter=blob:none https://github.com/{}.git {}'.format(
+                repo_name, git_workdir),
+            os.getcwd(),
+        )
+    git_fetch(git_workdir)
 
-    git_fetch(git_root)
     r = requests.get(
         'https://api.github.com/repos/{0}/pulls?state=open'.format(
             repo_name))
-    all_open_pull_requests = \
-        sorted(list(set([str(item['number']) for item in r.json()])))
+    all_open_pull_requests = list(
+        sorted(set(str(item['number']) for item in r.json())))
     pr_hash_list = subprocess.check_output(
         "git ls-remote origin 'pull/*/head'",
         shell=True).decode('utf-8').split('\n')
+
     print("All Open Pull Requests: ", all_open_pull_requests)
-    library_clean_submodules(all_open_pull_requests)
+    library_clean_submodules(repo_name, all_open_pull_requests)
     for pull_request_id in all_open_pull_requests:
         print()
         print("Processing:", str(pull_request_id))
