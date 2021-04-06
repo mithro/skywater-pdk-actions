@@ -15,16 +15,21 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+
 import os
-import subprocess
+import pprint
 import requests
+import subprocess
 import sys
+
+from collections import defaultdict
 
 import library_submodules
 from library_submodules import get_lib_versions
 from library_submodules import git
 from library_submodules import git_clean
 from library_submodules import git_fetch
+from library_submodules import git_head
 from library_submodules import git_issue_close
 from library_submodules import git_issue_comment
 from library_submodules import github_auth_set
@@ -36,7 +41,7 @@ __dir__ = os.path.dirname(__file__)
 
 GH_BACKPORT_NS_TOP = 'backport'
 GH_BACKPORT_NS_PR = GH_BACKPORT_NS_TOP + '/pr{pr_id}'
-GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/{seq_id}/{branch}'
+GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/v{seq_id}/{branch}'
 
 
 def get_sequence_number(pull_request_id):
@@ -53,11 +58,52 @@ def get_sequence_number(pull_request_id):
     return git_sequence
 
 
+def backport_hashes(repo_name, pull_request_id):
+    current_hashes = {}
+    for l in subprocess.check_output(
+            "git ls-remote https://github.com/{}.git '{}/*'".format(
+                repo_name, GH_BACKPORT_NS_PR.format(pr_id=pull_request_id)),
+            shell=True).decode('utf-8').split('\n'):
+
+        if not l.strip():
+            continue
+        print(l)
+        githash, ref = l.split('\t')
+        bits = ref.split('/')
+        assert bits.pop(0) == 'refs', bits
+        assert bits.pop(0) == 'heads', bits
+        assert bits.pop(0) == GH_BACKPORT_NS_TOP, bits
+        assert bits.pop(0).endswith(str(pull_request_id)), bits
+        seq_id = bits.pop(0)
+        assert seq_id.startswith('v'), (seq_id, bits)
+        seq_id = int(seq_id[1:])
+        assert seq_id >= 0, seq_id
+        assert seq_id < 100, seq_id
+        branch = bits.pop(0)
+        assert not bits, bits
+        if seq_id not in current_hashes:
+            current_hashes[seq_id] = {}
+        current_hashes[seq_id][branch] = githash
+
+    out = []
+    while current_hashes:
+        i = len(out)
+        if i in current_hashes:
+            out.append(current_hashes[i])
+            del current_hashes[i]
+        else:
+            out.append({})
+
+    return out
+
+
 def library_patch_submodules(
         patchfile, pull_request_id, repo_name, access_token, commit_msg_filename):
 
     assert os.path.exists(patchfile), patchfile
     assert os.path.isfile(patchfile), patchfile
+
+    hashes = backport_hashes(repo_name, pull_request_id)
 
     # Get the latest date in the patch file.
     date = None
@@ -86,16 +132,15 @@ def library_patch_submodules(
     print()
     print()
     versions = get_lib_versions(git_root)
-    backported_to_version = []
+    backported_to_version = {}
     for i, v in enumerate(versions):
         pv = previous_v(v, versions)
         ov = out_v(v, versions)
 
         v_branch = "branch-{}.{}.{}".format(*ov)
-        v_tag = "v{}.{}.{}".format(*ov)
 
         print()
-        print("Was:", pv, "Now patching", (v_branch, v_tag), "with", patchfile)
+        print("Was:", pv, "Now patching", v_branch, "with", patchfile)
         print('-'*20, flush=True)
 
         # Checkout the right branch
@@ -112,95 +157,79 @@ def library_patch_submodules(
                 git('am --abort', git_root)
                 continue
 
-        backported_to_version.append(v)
-
         # Create the merge commit
         if i > 0:
             git(
                 'merge {} --no-ff --no-commit --strategy=recursive'.format(diff_pos),
                 git_root)
         git('commit --allow-empty -F {}'.format(commit_msg_filename), git_root)
+        backported_to_version[v_branch] = git_head(git_root)
+
+        stat = [l.split() for l in subprocess.check_output(
+            ['git', 'diff', '--numstat', 'origin/{0}'.format(v_branch)],
+            cwd=git_root,
+        ).decode('utf-8').splitlines()]
+        changes = subprocess.check_output(
+            ['git', 'diff', '--patch-with-stat', 'origin/{0}'.format(v_branch)],
+            cwd=git_root,
+        ).decode('utf=8')
+        print(flush=True)
+        print('Changes on {}'.format(v_branch))
+        print('Changes in files:')
+        pprint.pprint(stat)
+        print('-'*20)
+        print(changes)
+        print('-'*20)
 
     if not backported_to_version:
         print('Patch was unable to be backported!')
         return False
 
-    print('Patch was backported to', backported_to_version)
-
     git('branch -D master', git_root, can_fail=True)
     git('branch master', git_root)
-
-    print('='*75, flush=True)
-
-    old_git_sequence = int(get_sequence_number(pull_request_id))
-    sequence_increment = 1
-    if old_git_sequence != -1:
-        old_pr_branch = \
-            GH_BACKPORT_NS_BRANCH.format(
-                pr_id=pull_request_id,
-                seq_id=old_git_sequence,
-                branch='master')
-        git('checkout {0}'.format(old_pr_branch), git_root)
-        internal_patch = subprocess.check_output(
-            'git diff {0}..master'.format(old_pr_branch),
-            shell=True).decode('utf-8').strip()
-        print(internal_patch)
-        print('**********************')
-        if not len(internal_patch):
-            sequence_increment = 0
-        print(sequence_increment)
-    git_sequence = old_git_sequence + sequence_increment
-
-    n_branch_links = ""
-    for i, v in enumerate(versions):
-        ov = out_v(v, versions)
-        v_branch = "branch-{}.{}.{}".format(*ov)
-        v_tag = "v{}.{}.{}".format(*ov)
-        print()
-        print("Now Pushing", (v_branch, v_tag))
-        print('-'*20, flush=True)
-
-        n_branch = GH_BACKPORT_NS_BRANCH.format(
-            pr_id=pull_request_id, seq_id=git_sequence, branch=v_branch)
-        branch_link = "https://github.com/{0}/tree/{1}".format(
-            repo_name, n_branch)
-        n_branch_links += "\n- {0}".format(branch_link)
-        print("Now Pushing", n_branch)
-        if git('push -f origin {0}:{1}'.format(v_branch, n_branch),
-                git_root, can_fail=True) is False:
-            print("""
-Pull Request {0} is coming from a fork and trying to update the workflow.
-We will skip it!!!
-""".format(pull_request_id))
-            return False
+    backported_to_version['master'] = git_head(git_root)
 
     print()
-    n_branch = GH_BACKPORT_NS_BRANCH.format(
-        pr_id=pull_request_id, seq_id=git_sequence, branch='master')
-    branch_link = "https://github.com/{0}/tree/{1}".format(repo_name, n_branch)
-    n_branch_links += "\n- {0}".format(branch_link)
+    print()
+    print('Previous backports:')
+    pprint.pprint(hashes)
+    print()
+    print('Patch was backported to:')
+    pprint.pprint(backported_to_version)
 
-    print("Now Pushing", n_branch)
-    print('-'*20, flush=True)
-    if git('push -f origin master:{0}'.format(n_branch),
-            git_root, can_fail=True) is False:
-        print("""\
-Pull Request {0} is coming from a fork and trying to update the workflow. \
-We will skip it!!! \
-""")
-        return False
+    if hashes and backported_to_version == hashes[-1]:
+        print()
+        print('Backported branches up to date!')
+        return
 
-    if sequence_increment:
-        comment_body = """\
-The latest commit of this PR, commit {0} has been applied to the branches, \
-please check the links here:
- {1}
-""".format(commit_hash, n_branch_links)
-        git_issue_comment(repo_name,
-                          pull_request_id,
-                          comment_body,
-                          access_token)
-    return True
+    print()
+    print('Backported branches need to be updated!')
+    new_seq = len(hashes)
+
+    comment_body = ["""\
+The commits from this PR have been backported onto:
+"""]
+
+    for b in backported_to_version:
+        base_hash = git_head(git_root, 'origin/'+b)
+
+        target = GH_BACKPORT_NS_BRANCH.format(
+            pr_id=pull_request_id, seq_id=new_seq, branch=b)
+        git('push origin {}:{}'.format(b, target), git_root)
+
+        if b != 'master':
+            comment_body += ["""\
+ - [{branch_name}](https://github.com/{repo_name}/compare/{base_hash}...{target})
+""".format(branch_name=b, repo_name=repo_name, base_hash=base_hash, target=target)]
+
+    comment_body = "".join(comment_body)
+    git_issue_comment(
+        repo_name,
+        pull_request_id,
+        comment_body,
+        access_token,
+    )
+    return
 
 
 def library_merge_submodules(pull_request_id, repo_name, access_token):

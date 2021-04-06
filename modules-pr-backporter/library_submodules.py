@@ -66,6 +66,11 @@ def git(cmd, gitdir, can_fail=False, **kw):
             raise
 
 
+def git_head(gitdir, branch='HEAD'):
+    output = subprocess.check_output(['git', 'rev-parse', branch], cwd=gitdir)
+    return output.decode('utf-8').strip()
+
+
 def github_auth_set(gitdir, access_token):
     auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
     extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())

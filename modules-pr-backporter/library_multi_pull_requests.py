@@ -58,10 +58,6 @@ def handle_pull_requests(args):
 
     all_open_pull_requests = list(
         sorted(set(str(item['number']) for item in r)))
-    pr_hash_list = subprocess.check_output(
-            "git ls-remote https://github.com/{}.git 'pull/*/head'".format(
-                repo_name),
-        shell=True).decode('utf-8').split('\n')
 
     print("All Open Pull Requests: ", all_open_pull_requests)
     library_clean_submodules(repo_name, all_open_pull_requests)
@@ -69,23 +65,22 @@ def handle_pull_requests(args):
         print()
         print("Processing:", str(pull_request_id))
         print('-'*20, flush=True)
-        commit_hash = ''
-        for pr_hash in pr_hash_list:
-            if 'pull/{0}/head'.format(pull_request_id) in pr_hash:
-                commit_hash = pr_hash.split()[0]
-                break
-        print("Head commit hash: ", commit_hash)
-        print()
         # Download the patch metadata
         pr_md = requests.get(
             'https://api.github.com/repos/{0}/pulls/{1}' .format(
                 repo_name, pull_request_id)).json()
-
+        label = pr_md['head']['label']
         commit_msg_filename = os.path.abspath(
             'commit-{0}.msg'.format(pull_request_id))
         with open(commit_msg_filename, 'w') as f:
-            f.write("Merging #{pr_id} - {title}\n".format(
-                pr_id=pull_request_id, title=pr_md['title']))
+            f.write("Merge pull request #{pr_id} from {label}\n".format(
+                pr_id=pull_request_id,
+                label=label,
+            ))
+            f.write("\n")
+            f.write(pr_md['title'])
+            f.write("\n")
+            f.write("\n")
             if pr_md['body'].strip():
                 f.write(pr_md['body'])
 
