@@ -41,7 +41,7 @@ __dir__ = os.path.dirname(__file__)
 
 GH_BACKPORT_NS_TOP = 'backport'
 GH_BACKPORT_NS_PR = GH_BACKPORT_NS_TOP + '/pr{pr_id}'
-GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/v{seq_id}/{branch}'
+GH_BACKPORT_NS_BRANCH = GH_BACKPORT_NS_PR + '/v{seq_id}-{seq_hash}/{branch}'
 
 
 def get_sequence_number(pull_request_id):
@@ -58,65 +58,99 @@ def get_sequence_number(pull_request_id):
     return git_sequence
 
 
-def backport_hashes(repo_name, pull_request_id):
-    current_hashes = {}
-    for l in subprocess.check_output(
-            "git ls-remote https://github.com/{}.git '{}/*'".format(
-                repo_name, GH_BACKPORT_NS_PR.format(pr_id=pull_request_id)),
-            shell=True).decode('utf-8').split('\n'):
+def order_seq(items):
+    """
+    >>> order_seq([((1, '000'), {})])
+    [(0, None, None), (1, '000', {})]
 
-        if not l.strip():
-            continue
-        print(l)
-        githash, ref = l.split('\t')
-        bits = ref.split('/')
-        assert bits.pop(0) == 'refs', bits
-        assert bits.pop(0) == 'heads', bits
-        assert bits.pop(0) == GH_BACKPORT_NS_TOP, bits
-        assert bits.pop(0).endswith(str(pull_request_id)), bits
-        seq_id = bits.pop(0)
-        assert seq_id.startswith('v'), (seq_id, bits)
-        seq_id = int(seq_id[1:])
-        assert seq_id >= 0, seq_id
-        assert seq_id < 100, seq_id
-        branch = bits.pop(0)
-        assert not bits, bits
-        if seq_id not in current_hashes:
-            current_hashes[seq_id] = {}
-        current_hashes[seq_id][branch] = githash
+    >>> order_seq([((0, '000'), {}), ((3, '001'), {})])
+    [(0, '000', {}), (1, None, None), (2, None, None), (3, '001', {})]
+    """
 
-    out = []
-    while current_hashes:
-        i = len(out)
-        if i in current_hashes:
-            out.append(current_hashes[i])
-            del current_hashes[i]
-        else:
-            out.append({})
+    out_pr = [(-1, None, None)]
 
-    return out
+    for seq_dat, data in sorted(items):
+        while seq_dat[0] - out_pr[-1][0] > 1:
+            out_pr.append((len(out_pr)-1, None, None))
+        out_pr.append((seq_dat[0], seq_dat[1], data))
+    out_pr.pop(0)
+    return out_pr
+
+
+def backport_hashes(repo_name, pull_request_id, __cache={}):
+    if not __cache:
+        for l in subprocess.check_output(
+                "git ls-remote https://github.com/{}.git '{}/*'".format(
+                    repo_name, GH_BACKPORT_NS_PR.format(pr_id=pull_request_id)),
+                shell=True).decode('utf-8').split('\n'):
+
+            if not l.strip():
+                continue
+
+            githash, ref = l.split('\t')
+            bits = ref.split('/')
+            assert bits.pop(0) == 'refs', bits
+            assert bits.pop(0) == 'heads', bits
+            assert bits.pop(0) == GH_BACKPORT_NS_TOP, bits
+
+            pr_id = bits.pop(0)
+            if pull_request_id != '*':
+                assert pr_id.endswith(str(pull_request_id)), (pr_id, bits)
+            pr_id = int(pr_id[2:])
+
+            if pr_id not in __cache:
+                __cache[pr_id] = {}
+
+            seq_info = bits.pop(0)
+            assert seq_info.startswith('v'), (seq_info, bits)
+            seq_id, seq_hash = seq_info.split('-')
+            seq_id = int(seq_id[1:])
+            assert seq_id >= 0, seq_id
+            assert seq_id < 100, seq_id
+
+            seq_dat = (seq_id, seq_hash)
+
+            branch = bits.pop(0)
+            assert not bits, bits
+            if seq_dat not in __cache[pr_id]:
+                __cache[pr_id][seq_dat] = {}
+            __cache[pr_id][seq_dat][branch] = githash
+
+    out = {}
+    for pr_id in __cache:
+        out[pr_id] = order_seq(__cache[pr_id].items())
+
+    if pull_request_id == '*':
+        return out
+    return out.get(pull_request_id, [])
 
 
 def library_patch_submodules(
-        patchfile, pull_request_id, repo_name, access_token, commit_msg_filename):
+            access_token,
+            repo_name,
+            pull_request_id,
+            pull_request_hash,
+            patch_filename,
+            commitmsg_filename,
+        ):
 
-    assert os.path.exists(patchfile), patchfile
-    assert os.path.isfile(patchfile), patchfile
-
-    hashes = backport_hashes(repo_name, pull_request_id)
+    assert os.path.exists(patch_filename), patch_filename
+    assert os.path.isfile(patch_filename), patch_filename
 
     # Get the latest date in the patch file.
     date = None
-    with open(patchfile) as f:
+    with open(patch_filename) as f:
         for l in f:
             if l.startswith('Date: '):
                 prefix, date = l.strip().split(': ', 1)
                 assert prefix == 'Date', (prefix, l)
-    assert date is not None, (data, open(patchfile).read())
+    assert date is not None, (data, open(patch_filename).read())
     library_submodules.DATE = date
+    print()
     print('Patch date is:', date)
 
     # Clone the repository in blobless mode.
+    print(flush=True)
     git_root = os.path.abspath(repo_name.replace('/', '--'))
     if not os.path.exists(git_root):
         git('clone --filter=blob:none https://github.com/{}.git {}'.format(
@@ -125,13 +159,16 @@ def library_patch_submodules(
         )
     else:
         print('Reusing existing clone at:', git_root)
+    print(flush=True)
 
     # Setup the github authentication token to allow pushing.
     github_auth_set(git_root, access_token)
 
     print()
-    print()
     versions = get_lib_versions(git_root)
+    print('Will backport to:', versions)
+    print()
+
     backported_to_version = {}
     for i, v in enumerate(versions):
         pv = previous_v(v, versions)
@@ -140,7 +177,7 @@ def library_patch_submodules(
         v_branch = "branch-{}.{}.{}".format(*ov)
 
         print()
-        print("Was:", pv, "Now patching", v_branch, "with", patchfile)
+        print("Was:", pv, "now patching", v_branch, "with", patch_filename)
         print('-'*20, flush=True)
 
         # Checkout the right branch
@@ -152,7 +189,7 @@ def library_patch_submodules(
 
         # Update the contents
         if not backported_to_version:
-            if git('am {}'.format(patchfile), git_root, can_fail=True) is False:
+            if git('am {}'.format(patch_filename), git_root, can_fail=True) is False:
                 git('am --show-current-patch=diff', git_root)
                 git('am --abort', git_root)
                 continue
@@ -162,7 +199,7 @@ def library_patch_submodules(
             git(
                 'merge {} --no-ff --no-commit --strategy=recursive'.format(diff_pos),
                 git_root)
-        git('commit --allow-empty -F {}'.format(commit_msg_filename), git_root)
+        git('commit --allow-empty -F {}'.format(commitmsg_filename), git_root)
         backported_to_version[v_branch] = git_head(git_root)
 
         stat = [l.split() for l in subprocess.check_output(
@@ -192,29 +229,29 @@ def library_patch_submodules(
     print()
     print()
     print('Previous backports:')
+    hashes = backport_hashes(repo_name, pull_request_id)
     pprint.pprint(hashes)
     print()
     print('Patch was backported to:')
     pprint.pprint(backported_to_version)
-
-    if hashes and backported_to_version == hashes[-1]:
-        print()
-        print('Backported branches up to date!')
-        return
 
     print()
     print('Backported branches need to be updated!')
     new_seq = len(hashes)
 
     comment_body = ["""\
-The commits from this PR have been backported onto:
-"""]
+The commits from this PR have been backported (version {} - {}) onto:
+""".format(new_seq, pull_request_hash)]
 
     for b in backported_to_version:
         base_hash = git_head(git_root, 'origin/'+b)
 
         target = GH_BACKPORT_NS_BRANCH.format(
-            pr_id=pull_request_id, seq_id=new_seq, branch=b)
+            pr_id=pull_request_id,
+            seq_id=new_seq,
+            seq_hash=pull_request_hash,
+            branch=b,
+        )
         git('push origin {}:{}'.format(b, target), git_root)
 
         if b != 'master':
@@ -357,16 +394,6 @@ def library_clean_submodules(git_root, all_open_pull_requests):
                 git_root)
 
 
-def main(args):
-    assert len(args) == 5
-    patchfile = os.path.abspath(args.pop(0))
-    pull_request_id = args.pop(0)
-    repo_name = args.pop(0)
-    access_token = args.pop(0)
-    commit_hash = args.pop(0)
-    library_patch_submodules(
-        patchfile, pull_request_id, repo_name, access_token, commit_hash)
-
-
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    import doctest
+    doctest.testmod()
