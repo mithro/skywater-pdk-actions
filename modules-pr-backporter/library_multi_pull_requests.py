@@ -18,13 +18,13 @@
 
 import json
 import os
+import pathlib
 import pprint
 import requests
 import subprocess
 import sys
 import textwrap
 import urllib3
-
 
 from library_submodules import reset_branches
 from library_submodules import label_exists
@@ -58,20 +58,20 @@ GROUP_OPEN = []
 
 def group_end():
     assert GROUP_OPEN
-    print()
-    print('-'*50)
-    print("::endgroup::")
-    print(flush=True)
-    GROUP_OPEN.pop()
+    f, title = GROUP_OPEN.pop()
+    f()
+    f('-'*50)
+    f("::endgroup::")
+    f(flush=True)
 
 
-def group_start(title):
+def group_start(title, f=print):
     if GROUP_OPEN:
         group_end()
-    print("::group::"+str(title))
-    print('-'*50)
-    print(flush=True)
-    GROUP_OPEN.append(title)
+    f("::group::"+str(title))
+    f('-'*50)
+    f(flush=True)
+    GROUP_OPEN.append((f, title))
 
 
 def get_github_json(url, *args, **kw):
@@ -85,113 +85,99 @@ def get_github_json(url, *args, **kw):
 
 
 def handle_pull_requests(args):
-    repo_name = args.pop(0)
-    assert not args, args
     http = urllib3.PoolManager()
 
-    # Get a list of all the open pull requests
-    backport_dat = backport_hashes(repo_name, '*')
+    event_json_path = os.environ.get('GITHUB_EVENT_PATH', None)
+    if not event_json_path:
+        print("Did not find GITHUB_EVENT_NAME environment value.")
+        return -1
+    event_json_path = pathlib.Path(event_json_path)
+    if not event_json_path.exists():
+        print(f"Path {event_json_path} was not found.")
+        return -2
+
+    event_json_data = open(event_json_path).read()
+    group_start('Raw event_json_data', debug)
+    debug(event_json_data)
+    group_end()
+
+    event_json = json.load(open(event_json_path))
+    group_start("Event data")
+    pprint.pprint(event_json)
+    group_end()
+
+    pull_request_id = event_json['number']
+    repo_name = event_json['repository']['full_name']
+
+    # Get the state for the current pull request
+    pr_seq_dat = backport_hashes(repo_name, pull_request_id)
     group_start("Current backport data")
-    pprint.pprint(backport_dat)
+    pprint.pprint(pr_seq_dat)
     group_end()
 
-    # Get a list of all the open pull requests
-    r = get_github_json(
-        'https://api.github.com/repos/{0}/pulls?state=open',
-        repo_name)
-    all_open_pull_requests = list(
-        sorted(set(item['number'] for item in r)))
-    print()
-    print("All Open Pull Requests: ", all_open_pull_requests)
-    print(flush=True)
+    # Download the patch metadata
+    print('Status URL:', event_json['pull_request']['statuses_url'])
 
-    # Cleaning up any left over merged branches.
-    group_start("Cleaning up old branches.")
-    #library_clean_submodules(repo_name, all_open_pull_requests)
-    group_end()
-
-    # See if any their are any new pull requests or old pull requests which
-    # need updating.
-    for pull_request_id in all_open_pull_requests:
-        group_start("Processing pull request #"+str(pull_request_id))
-
-        # Download the patch metadata
-        pr_md = get_github_json(
-            'https://api.github.com/repos/{0}/pulls/{1}',
-            repo_name, pull_request_id)
-
-        print('Status URL:', pr_md['statuses_url'])
-
-        # Check if the pull request needs to be backported.
-        pr_hash = pr_md['head']['sha'][:5]
-        print('Source branch hash:', pr_hash)
-        pr_seq_dat = backport_dat.get(pull_request_id, [])
-        if pr_seq_dat and pr_seq_dat[-1][1] == pr_hash:
-            print('Existing backport branches up to date')
+    # Check if the pull request needs to be backported.
+    pr_hash = event_json['pull_request']['head']['sha'][:5]
+    print('Source branch hash:', pr_hash)
+    if pr_seq_dat and pr_seq_dat[-1][1] == pr_hash:
+        print('Existing backport branches up to date')
+        print()
+        for seq_id, seq_hash, branches in pr_seq_dat:
+            print(' - Sequence:', 'v{}-{}'.format(seq_id, seq_hash))
+            bwidth = max(len(n) for n in branches)
+            for name, git_hash in branches.items():
+                print('   * {} @ {}'.format(name.ljust(bwidth), git_hash[:5]))
             print()
-            for seq_id, seq_hash, branches in pr_seq_dat:
-                print(' - Sequence:', 'v{}-{}'.format(seq_id, seq_hash))
-                bwidth = max(len(n) for n in branches)
-                for name, git_hash in branches.items():
-                    print('   * {} @ {}'.format(name.ljust(bwidth), git_hash[:5]))
-                print()
-            continue
+        return 0
 
-        # Backporting needs to run
-        label = pr_md['head']['label']
-        commitmsg_filename = os.path.abspath(
-            'commit-{0}.msg'.format(pull_request_id))
-        with open(commitmsg_filename, 'w') as f:
-            f.write("Merge pull request #{pr_id} from {label}\n".format(
-                pr_id=pull_request_id,
-                label=label,
-            ))
-            f.write("\n")
-            f.write(pr_md['title'])
-            f.write("\n")
-            f.write("\n")
-            if pr_md['body'].strip():
-                f.write(pr_md['body'])
+    # Backporting needs to run
+    label = event_json['pull_request']['head']['label']
+    commitmsg_filename = os.path.abspath(
+        'commit-{0}.msg'.format(pull_request_id))
+    with open(commitmsg_filename, 'w') as f:
+        f.write("Merge pull request #{pr_id} from {label}\n".format(
+            pr_id=pull_request_id,
+            label=label,
+        ))
+        f.write("\n")
+        f.write(event_json['pull_request']['title'])
+        f.write("\n")
+        f.write("\n")
+        if event_json['pull_request']['body'].strip():
+            f.write(event_json['pull_request']['body'])
 
-        debug('Pull request commit message', '-'*50)
-        debug(open(commitmsg_filename).read())
-        debug('-'*50)
+    debug('Pull request commit message', '-'*50)
+    debug(open(commitmsg_filename).read())
+    debug('-'*50)
 
-        # Download the patch
-        print("Getting Patch")
-        patch_request = http.request(
-            'GET',
-            'https://github.com/{0}/pull/{1}.patch' .format(
-                repo_name, pull_request_id))
+    # Download the patch
+    print("Getting Patch")
+    patch_request = http.request(
+        'GET',
+        'https://github.com/{0}/pull/{1}.patch' .format(
+            repo_name, pull_request_id))
 
-        patch_data = patch_request.data.decode('utf-8')
-        debug('Pull request patch data', '-'*50)
-        debug(patch_data)
-        debug('-'*50)
+    patch_data = patch_request.data.decode('utf-8')
+    debug('Pull request patch data', '-'*50)
+    debug(patch_data)
+    debug('-'*50)
 
-        if patch_request.status != 200:
-            print('Unable to get patch. Skipping...')
-            continue
+    if patch_request.status != 200:
+        print('Unable to get patch. Skipping...')
+        return -1
 
-        patch_filename = os.path.abspath('pr-{0}.patch'.format(pull_request_id))
-        with open(patch_filename, 'w') as f:
-            f.write(patch_request.data.decode('utf-8'))
+    patch_filename = os.path.abspath('pr-{0}.patch'.format(pull_request_id))
+    with open(patch_filename, 'w') as f:
+        f.write(patch_request.data.decode('utf-8'))
 
-        # Backport the patch
-        print("Will try to apply: ", patch_filename)
-        library_patch_submodules(
-            ACCESS_TOKEN,
-            repo_name,
-            pull_request_id, pr_hash, patch_filename, commitmsg_filename)
-
-    if all_open_pull_requests:
-        group_end()
-
-#        continue
-#        if label_exists(repo_name, pull_request_id, 'ready-to-merge'):
-#            print("PR {0} is now ready to be merged..".format(pull_request_id))
-#            library_merge_submodules(
-#                pull_request_id, repo_name, ACCESS_TOKEN)
+    # Backport the patch
+    print("Will try to apply: ", patch_filename)
+    library_patch_submodules(
+        ACCESS_TOKEN,
+        repo_name,
+        pull_request_id, pr_hash, patch_filename, commitmsg_filename)
 
 
 if __name__ == "__main__":
