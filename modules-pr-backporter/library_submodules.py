@@ -47,6 +47,8 @@ def git(cmd, gitdir, can_fail=False, **kw):
         env['GIT_COMMITTER_DATE'] = DATE
     env['GIT_COMMITTER_NAME'] = "GitHub Actions Bot"
     env['GIT_COMMITTER_EMAIL'] = 'actions_bot@github.com'
+    env['GIT_AUTHOR_NAME'] = "GitHub Actions Bot"
+    env['GIT_AUTHOR_EMAIL'] = 'actions_bot@github.com'
 
     if 'push' in cmd:
         cmd += ' --verbose --progress'
