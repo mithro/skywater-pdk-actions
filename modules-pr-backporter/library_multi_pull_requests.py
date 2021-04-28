@@ -46,7 +46,7 @@ if ACCESS_TOKEN is None:
     raise SystemError('Did not find an access token of `GH_TOKEN` or `GITHUB_TOKEN`')
 
 
-DEBUG = os.environ.get('ACTIONS_STEP_DEBUG', 'false').lower() in ('true', '1')
+DEBUG = True # os.environ.get('ACTIONS_STEP_DEBUG', 'false').lower() in ('true', '1')
 
 
 def debug(*args, **kw):
