@@ -23,6 +23,8 @@ import subprocess
 import sys
 import time
 
+import ssh_keys
+
 
 def run(cmd, **kw):
     sys.stdout.flush()
@@ -73,11 +75,23 @@ def git_head(gitdir, branch='HEAD'):
     return output.decode('utf-8').strip()
 
 
-def github_auth_set(gitdir, access_token):
-    auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
-    extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())
-    git("config http.https://github.com/.extraheader '{}'".format(extra_header),
-        gitdir)
+def git_config(gitdir, key, value, level='local'):
+    if level != 'local':
+        gitdir = None
+    git("config --{} '{}' '{}'".format(level, key, value), gitdir)
+
+
+#def github_auth_set(gitdir, access_token):
+#    auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
+#    extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())
+#    git_config(gitdir, 'http.https://github.com/.extraheader', extra_header)
+
+
+def github_auth_set(gitdir):
+    # git config core.sshCommand "ssh -i ~/.ssh/id_rsa_example -F /dev/null"
+    ssh_keys.import_keys()
+    #git_config(gitdir, "protocol.allow", "never", level='system')
+    #git_config(gitdir, "protocol.ssh.allow", "always", level='system')
 
 
 def out_v(v, versions):

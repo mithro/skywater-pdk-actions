@@ -17,6 +17,7 @@
 
 
 import json
+import logging
 import os
 import pathlib
 import pprint
@@ -172,6 +173,7 @@ def handle_check(http, event_json):
 
 
 def handle_event(args):
+    logging.basicConfig(level=logging.DEBUG)
     http = urllib3.PoolManager()
 
     event_json_path = os.environ.get('GITHUB_EVENT_PATH', None)
@@ -182,6 +184,11 @@ def handle_event(args):
     if not event_json_path.exists():
         print(f"Path {event_json_path} was not found.")
         return -2
+
+    group_start('git config', debug)
+    git_config_out = subprocess.check_output(['git', 'config', '--show-origin', '--list'])
+    debug(git_config_out.decode('utf-8'))
+    group_end()
 
     event_json_data = open(event_json_path).read()
     group_start('Raw event_json_data', debug)
