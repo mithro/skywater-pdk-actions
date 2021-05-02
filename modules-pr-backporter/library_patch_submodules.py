@@ -222,9 +222,9 @@ def library_patch_submodules(
         print('Patch was unable to be backported!')
         return False
 
-    git('branch -D master', git_root, can_fail=True)
-    git('branch master', git_root)
-    backported_to_version['master'] = git_head(git_root)
+    git('branch -D main', git_root, can_fail=True)
+    git('branch main', git_root)
+    backported_to_version['main'] = git_head(git_root)
 
     print()
     print()
@@ -254,7 +254,7 @@ The commits from this PR have been backported (version {} - {}) onto:
         )
         git('push origin {}:{}'.format(b, target), git_root)
 
-        if b != 'master':
+        if b != 'main':
             comment_body += ["""\
  - [{branch_name}](https://github.com/{repo_name}/compare/{base_hash}...{target})
 """.format(branch_name=b, repo_name=repo_name, base_hash=base_hash, target=target)]
@@ -308,15 +308,15 @@ def library_merge_submodules(pull_request_id, repo_name, access_token):
 
     git_clean(git_root)
     n_branch = GH_BACKPORT_NS_BRANCH.format(
-        pr_id=pull_request_id, seq_id=git_sequence, branch='master')
-    git('checkout master', git_root)
-    print("Now reseting master to ", n_branch)
+        pr_id=pull_request_id, seq_id=git_sequence, branch='main')
+    git('checkout main', git_root)
+    print("Now reseting main to ", n_branch)
     git('reset --hard origin/{0}'.format(n_branch), git_root)
     print("Now Pushing", v_branch)
-    git('push -f origin master:master', git_root)
+    git('push -f origin main:main', git_root)
     for i in range(git_sequence + 1):
         d_branch = GH_BACKPORT_NS_BRANCH.format(
-            pr_id=pull_request_id, seq_id=i, branch='master')
+            pr_id=pull_request_id, seq_id=i, branch='main')
         git('push origin --delete {0}'.format(d_branch),
             git_root)
     git_issue_close(repo_name, pull_request_id, access_token)
@@ -363,9 +363,9 @@ def library_rebase_submodules(pull_request_id):
 
     git_clean(git_root)
     n_branch = GH_BACKPORT_NS_BRANCH.format(
-        pr_id=pull_request_id, seq_id=git_sequence, branch='master')
+        pr_id=pull_request_id, seq_id=git_sequence, branch='main')
     git('checkout {0}'.format(n_branch), git_root)
-    git('rebase origin/master', git_root)
+    git('rebase origin/main', git_root)
     print("Now Pushing", n_branch)
     git('push -f origin {0}:{0}'.format(n_branch), git_root)
 

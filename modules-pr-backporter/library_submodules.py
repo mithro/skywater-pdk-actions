@@ -69,7 +69,7 @@ def git(cmd, gitdir, can_fail=False, **kw):
 
 
 def git_head(gitdir, branch='HEAD'):
-    output = subprocess.check_output(['git', 'rev-parse', branch], cwd=gitdir)
+    output = subprocess.check_output(['git', 'rev-parse', '--verify', branch], cwd=gitdir)
     return output.decode('utf-8').strip()
 
 
