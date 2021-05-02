@@ -84,27 +84,7 @@ def get_github_json(url, *args, **kw):
     return json_data
 
 
-def handle_pull_requests(args):
-    http = urllib3.PoolManager()
-
-    event_json_path = os.environ.get('GITHUB_EVENT_PATH', None)
-    if not event_json_path:
-        print("Did not find GITHUB_EVENT_NAME environment value.")
-        return -1
-    event_json_path = pathlib.Path(event_json_path)
-    if not event_json_path.exists():
-        print(f"Path {event_json_path} was not found.")
-        return -2
-
-    event_json_data = open(event_json_path).read()
-    group_start('Raw event_json_data', debug)
-    debug(event_json_data)
-    group_end()
-
-    event_json = json.load(open(event_json_path))
-    group_start("Event data")
-    pprint.pprint(event_json)
-    group_end()
+def handle_pull_request(http, event_json):
 
     pull_request_id = event_json['number']
     repo_name = event_json['repository']['full_name']
@@ -180,5 +160,45 @@ def handle_pull_requests(args):
         pull_request_id, pr_hash, patch_filename, commitmsg_filename)
 
 
+def handle_check(http, event_json):
+    check_run_data = event_json['check_run']
+    check_suite_data = event_json['check_run'].pop('check_suite')
+    print()
+    print('-'*50)
+    pprint.pprint(check_run_data)
+    print('-'*50)
+    pprint.pprint(check_suite_data)
+    print('-'*50)
+
+
+def handle_event(args):
+    http = urllib3.PoolManager()
+
+    event_json_path = os.environ.get('GITHUB_EVENT_PATH', None)
+    if not event_json_path:
+        print("Did not find GITHUB_EVENT_NAME environment value.")
+        return -1
+    event_json_path = pathlib.Path(event_json_path)
+    if not event_json_path.exists():
+        print(f"Path {event_json_path} was not found.")
+        return -2
+
+    event_json_data = open(event_json_path).read()
+    group_start('Raw event_json_data', debug)
+    debug(event_json_data)
+    group_end()
+
+    event_json = json.load(open(event_json_path))
+    group_start("Event data")
+    pprint.pprint(event_json)
+    group_end()
+
+    if 'pull_request' in event_json:
+        return handle_pull_request(http, event_json)
+
+    elif 'check_run' in event_json:
+        return handle_check(http, event_json)
+
+
 if __name__ == "__main__":
-    sys.exit(handle_pull_requests(sys.argv[1:]))
+    sys.exit(handle_event(sys.argv[1:]))
