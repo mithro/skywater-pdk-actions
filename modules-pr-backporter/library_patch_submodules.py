@@ -151,17 +151,17 @@ def library_patch_submodules(
 
     # Setup the github authentication using ssh deploy key to allow pushing.
     git_root = os.path.abspath(repo_name.replace('/', '--'))
+    github_auth_set(git_root, access_token)
 
     # Clone the repository in blobless mode.
     print(flush=True)
     if not os.path.exists(git_root):
-        git('clone --filter=blob:none https://github.com/{}.git {}'.format(
+        git('clone --filter=blob:none git+ssh://git@github.com/{}.git {}'.format(
                 repo_name, git_root),
             os.getcwd(),
         )
     else:
         print('Reusing existing clone at:', git_root)
-    github_auth_set(git_root, access_token)
     print(flush=True)
 
     print()

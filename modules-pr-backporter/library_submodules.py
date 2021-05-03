@@ -47,10 +47,10 @@ def git(cmd, gitdir, can_fail=False, **kw):
     if DATE:
         env['GIT_AUTHOR_DATE'] = DATE
         env['GIT_COMMITTER_DATE'] = DATE
-    env['GIT_COMMITTER_NAME'] = "Joe Blogs"
-    env['GIT_COMMITTER_EMAIL'] = 'joe@example.com'
-    env['GIT_AUTHOR_NAME'] = "Joe Blogs"
-    env['GIT_AUTHOR_EMAIL'] = 'joe@example.com'
+    env['GIT_COMMITTER_NAME'] = "GitHub Actions Bot"
+    env['GIT_COMMITTER_EMAIL'] = 'actions_bot@github.com'
+    env['GIT_AUTHOR_NAME'] = "GitHub Actions Bot"
+    env['GIT_AUTHOR_EMAIL'] = 'actions_bot@github.com'
 
     if 'push' in cmd:
         cmd += ' --verbose --progress'
@@ -81,17 +81,17 @@ def git_config(gitdir, key, value, level='local'):
     git("config --{} '{}' '{}'".format(level, key, value), gitdir)
 
 
+#def github_auth_set(gitdir, access_token):
+#    auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
+#    extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())
+#    git_config(gitdir, 'http.https://github.com/.extraheader', extra_header)
+
+
 def github_auth_set(gitdir, access_token):
-    auth_token = base64.b64encode('x-access-token:{}'.format(access_token).encode('utf-8'))
-    extra_header = "AUTHORIZATION: basic {}".format(auth_token.decode())
-    git_config(gitdir, 'http.https://github.com/.extraheader', extra_header)
-
-
-#def github_auth_set(gitdir):
-#    # git config core.sshCommand "ssh -i ~/.ssh/id_rsa_example -F /dev/null"
-#    ssh_keys.import_keys()
-#    #git_config(gitdir, "protocol.allow", "never", level='system')
-#    #git_config(gitdir, "protocol.ssh.allow", "always", level='system')
+    # git config core.sshCommand "ssh -i ~/.ssh/id_rsa_example -F /dev/null"
+    ssh_keys.import_keys()
+    #git_config(gitdir, "protocol.allow", "never", level='system')
+    #git_config(gitdir, "protocol.ssh.allow", "always", level='system')
 
 
 def out_v(v, versions):
