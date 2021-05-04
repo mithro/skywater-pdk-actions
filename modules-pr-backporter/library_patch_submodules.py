@@ -77,6 +77,36 @@ def order_seq(items):
     return out_pr
 
 
+def backport_branch_info(branch_name):
+    """
+
+    >>> backport_branch_info('backport/pr1/v12-54b92/branch-0.0.1')
+    (1, (12, '54b92'), 'branch-0.0.1')
+    >>> backport_branch_info('backport/pr4/v0-d8e61/main')
+    (4, (0, 'd8e61'), 'main')
+
+    """
+    bits = branch_name.split('/')
+    assert bits.pop(0) == GH_BACKPORT_NS_TOP, (bits, branch_name)
+
+    pr_id = bits.pop(0)
+    assert pr_id.startswith('pr'), (pr_id, branch_name)
+    pr_id = int(pr_id[2:])
+
+    seq_info = bits.pop(0)
+    assert seq_info.startswith('v'), (seq_info, branch_name)
+    seq_id, seq_hash = seq_info.split('-')
+    seq_id = int(seq_id[1:])
+    assert seq_id >= 0, seq_id
+    assert seq_id < 100, seq_id
+
+    seq_dat = (seq_id, seq_hash)
+
+    branch = bits.pop(0)
+    assert not bits, (bits, branch_name)
+    return pr_id, seq_dat, branch
+
+
 def backport_hashes(repo_name, pull_request_id, __cache={}):
     if not __cache:
         for l in subprocess.check_output(
@@ -88,30 +118,16 @@ def backport_hashes(repo_name, pull_request_id, __cache={}):
                 continue
 
             githash, ref = l.split('\t')
-            bits = ref.split('/')
-            assert bits.pop(0) == 'refs', bits
-            assert bits.pop(0) == 'heads', bits
-            assert bits.pop(0) == GH_BACKPORT_NS_TOP, bits
+            heads = 'refs/heads/'
+            assert ref.startswith(heads), ref
+            pr_id, seq_dat, branch = brackport_branch_info(ref[len(heads):])
 
-            pr_id = bits.pop(0)
             if pull_request_id != '*':
-                assert pr_id.endswith(str(pull_request_id)), (pr_id, bits)
-            pr_id = int(pr_id[2:])
+                assert pr_id == pull_request_id, (pr_id, pull_request_id, ref)
 
             if pr_id not in __cache:
                 __cache[pr_id] = {}
 
-            seq_info = bits.pop(0)
-            assert seq_info.startswith('v'), (seq_info, bits)
-            seq_id, seq_hash = seq_info.split('-')
-            seq_id = int(seq_id[1:])
-            assert seq_id >= 0, seq_id
-            assert seq_id < 100, seq_id
-
-            seq_dat = (seq_id, seq_hash)
-
-            branch = bits.pop(0)
-            assert not bits, bits
             if seq_dat not in __cache[pr_id]:
                 __cache[pr_id][seq_dat] = {}
             __cache[pr_id][seq_dat][branch] = githash
