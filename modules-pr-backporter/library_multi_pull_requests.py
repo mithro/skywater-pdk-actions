@@ -343,7 +343,11 @@ Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{
         if not new_check['output']['text']:
             new_check['output']['text'] = new_check['output']['summary']
 
+        print()
+        print("New check")
+        print('-'*75)
         pprint.pprint(new_check)
+        print('-'*75)
 
 
         if extid not in extid2run:
