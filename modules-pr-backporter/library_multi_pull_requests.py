@@ -194,7 +194,7 @@ def handle_pull_request(http, event_json):
         pull_request_id, pr_hash, patch_filename, commitmsg_filename)
 
 
-BACKPORT_MARKER = 'backport '
+BACKPORT_MARKER = 'BACKPORT'
 
 def handle_workflow_run(http, event_json):
     workflow = event_json['workflow']
@@ -243,9 +243,9 @@ def handle_workflow_run(http, event_json):
         eid = check['external_id']
         head_sha.add(check['head_sha'])
         if eid.startswith(BACKPORT_MARKER):
-            marker, pr_check_branch, check_name = eid.split(' ', 3)
-            assert maker == BACKPORT_MARKER, eid
-            extid2run[(pr_check_branch, check_name)] = check
+            marker, pr_check_branch, workflow_name, check_name = eid.split('$', 4)
+            assert marker == BACKPORT_MARKER, eid
+            extid2run[(pr_check_branch, workflow_name, check_name)] = check
         elif DEBUG:
             debug('\nSkipping')
             debug(pprint.pformat(check))
@@ -267,7 +267,7 @@ def handle_workflow_run(http, event_json):
         check.pop('app')
         pprint.pprint(check)
         assert 'name' in check
-        extid = (workflow_branch, check['name'])
+        extid = (workflow_branch, workflow_run['name'], check['name'])
 
         key_action = {
             'owner':            'add',
@@ -305,11 +305,11 @@ def handle_workflow_run(http, event_json):
 
             elif action == 'replace':
                 if k == 'external_id':
-                    new_check[k] = f'{BACKPORT_MARKER}{extid[0]} {extid[1]}'
+                    new_check[k] = '$'.join([BACKPORT_MARKER]+list(extid))
                 elif k == 'head_sha':
                     new_check[k] = head_sha
                 elif k == 'name':
-                    new_check[k] = f"{workflow_branch} - {check['name']}"
+                    new_check[k] = f"{workflow_branch}: {workflow_run['name']} - {check['name']}"
             else:
                 raise ValueError(f"Unknown action {action}")
 
@@ -327,7 +327,7 @@ def handle_workflow_run(http, event_json):
         # Invalid request. For 'properties/summary', nil is not a string.
         if not new_check['output']['summary']:
             new_check['output']['summary'] = f"""\
-Run of {check['name']} on Pull Request #{pr_id} (run #{seq_dat[0]} with git hash {seq_dat[1]} backported to {workflow_branch}.
+Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{seq_dat[0]} with git hash {seq_dat[1]}) backported to {workflow_branch}.
 """
         # Invalid request. For 'properties/title', nil is not a string.
         if not new_check['output']['title']:
