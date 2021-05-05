@@ -120,7 +120,7 @@ def backport_hashes(repo_name, pull_request_id, __cache={}):
             githash, ref = l.split('\t')
             heads = 'refs/heads/'
             assert ref.startswith(heads), ref
-            pr_id, seq_dat, branch = brackport_branch_info(ref[len(heads):])
+            pr_id, seq_dat, branch = backport_branch_info(ref[len(heads):])
 
             if pull_request_id != '*':
                 assert pr_id == pull_request_id, (pr_id, pull_request_id, ref)
