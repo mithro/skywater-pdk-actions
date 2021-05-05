@@ -214,7 +214,12 @@ def handle_workflow_run(http, event_json):
         raise SystemError('Invalid workflow_run event!')
     pr_id, seq_dat, workflow_branch = backport_branch_info(head_branch)
 
-    print('Workflow run comes from', f'Pull request #{pr_id}', seq_dat, workflow_branch)
+    print(
+        f'Workflow run comes from backport of',
+        f'Pull request #{pr_id}',
+        f'run #{seq_dat[0]} (with git hash {seq_dat[1]})',
+        f'to {workflow_branch}',
+    )
 
     # Check the this workflow's 'checks' json
     workflow_check_runs = get_github_json(workflow_run['check_suite_url']+'/check-runs')
@@ -291,7 +296,7 @@ def handle_workflow_run(http, event_json):
             if k not in key_action:
                 raise ValueError(f"{k} not found.")
 
-            action = key_action[k]
+            action = key_action.pop(k)
             if action == 'remove':
                 continue
 
@@ -304,17 +309,33 @@ def handle_workflow_run(http, event_json):
                 elif k == 'head_sha':
                     new_check[k] = head_sha
                 elif k == 'name':
-                    new_check[k] = f'{extid[0]} - {extid[1]}'
+                    new_check[k] = f"{workflow_branch} - {check['name']}"
             else:
                 raise ValueError(f"Unknown action {action}")
 
         for k, action in sorted(key_action.items()):
             if action == "add":
+                key_action.pop(k)
                 assert k not in new_check, f"{k} is already exists in {new_check}"
                 if k == 'owner':
                     new_check['owner'] = repo_owner
                 elif k == 'repo':
                     new_check['repo'] = repo_name
+
+        assert not key_action, key_action
+
+        # Invalid request. For 'properties/summary', nil is not a string.
+        if not new_check['output']['summary']:
+            new_check['output']['summary'] = f"""\
+Run of {check['name']} on Pull Request #{pr_id} (run #{seq_dat[0]} with git hash {seq_dat[1]} backported to {workflow_branch}.
+"""
+        # Invalid request. For 'properties/title', nil is not a string.
+        if not new_check['output']['title']:
+            new_check['output']['title'] = new_check['name']
+
+        # Invalid request. For 'properties/text', nil is not a string.
+        if not new_check['output']['text']:
+            new_check['output']['text'] = new_check['output']['summary']
 
         pprint.pprint(new_check)
 
