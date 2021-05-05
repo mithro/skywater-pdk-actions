@@ -359,7 +359,7 @@ Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{
             r = send_github_json(pr_check_api_url, 'POST', new_check)
         else:
             print('Need to *update* this check.')
-            pr_check_api_url = commits_url.replace(SHA_MARKER, f"/check-runs/{extid2run[extid]}")
+            pr_check_api_url = commits_url.replace('/commits'+SHA_MARKER, f"/check-runs/{extid2run[extid]}")
             r = send_github_json(pr_check_api_url, 'PATCH', new_check)
 
         print()
