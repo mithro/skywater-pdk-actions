@@ -251,10 +251,7 @@ def handle_workflow_run(http, event_json):
         if eid.startswith(BACKPORT_MARKER):
             marker, pr_check_branch, workflow_name, check_name = eid.split('$', 4)
             assert marker == BACKPORT_MARKER, eid
-            extid2run[(pr_check_branch, workflow_name, check_name)] = check
-        elif DEBUG:
-            debug('\nSkipping')
-            debug(pprint.pformat(check))
+            extid2run[(pr_check_branch, workflow_name, check_name)] = check['id']
 
     debug()
     debug('Found head_sha values of:', head_sha)
@@ -349,7 +346,6 @@ Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{
         pprint.pprint(new_check)
         print('-'*75)
 
-
         if extid not in extid2run:
             print()
             print('Need to *create* this check.')
@@ -357,7 +353,7 @@ Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{
             r = send_github_json(pr_check_api_url, 'POST', new_check)
         else:
             print('Need to *update* this check.')
-            pr_check_api_url = commits_url.replace(SHA_MARKER, f"/check-runs/{new_check['id']}")
+            pr_check_api_url = commits_url.replace(SHA_MARKER, f"/check-runs/{extid2run[extid]}")
             r = send_github_json(pr_check_api_url, 'PATCH', new_check)
 
         print()
