@@ -241,29 +241,35 @@ def handle_workflow_run(http, event_json):
     pr_check_runs = pr_check_runs['check_runs']
 
     head_sha = set()
-    extid2run = {}
 
-    group_start('Ignored pull request check_runs', debug)
+    backport_check_runs = []
     for check in pr_check_runs:
         check.pop('app')
-        eid = check['external_id']
         head_sha.add(check['head_sha'])
-        if eid.startswith(BACKPORT_MARKER):
-            marker, pr_check_branch, workflow_name, check_name = eid.split('$', 4)
-            assert marker == BACKPORT_MARKER, eid
-            extid2run[(pr_check_branch, workflow_name, check_name)] = check['id']
 
-    debug()
-    debug('Found head_sha values of:', head_sha)
-    debug()
+        if check['external_id'].startswith(BACKPORT_MARKER):
+            backport_check_runs.append(check)
 
     assert len(head_sha) == 1, head_sha
     head_sha = head_sha.pop()
     assert head_sha.startswith(seq_dat[1]), (head_sha, seq_dat[1])
+    debug()
+    debug('Found head_sha values of:', head_sha)
+    debug()
 
-    group_end()
 
+    extid2run = {}
+    for check in backport_check_runs:
+        pr_check_runs.remove(check)
+
+        eid = check['external_id']
+        marker, pr_check_branch, workflow_name, check_name = eid.split('$', 4)
+        assert marker == BACKPORT_MARKER, eid
+        extid2run[(pr_check_branch, workflow_name, check_name)] = check['id']
+
+    group_start('Existing backported check_runs', debug)
     pprint.pprint(extid2run)
+    group_end()
 
     print('='*75)
     for check in workflow_check_runs:
