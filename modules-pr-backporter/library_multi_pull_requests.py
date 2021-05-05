@@ -50,6 +50,10 @@ if ACCESS_TOKEN is None:
 
 DEBUG = True # os.environ.get('ACTIONS_STEP_DEBUG', 'false').lower() in ('true', '1')
 
+def flush():
+    sys.stderr.flush()
+    sys.stdout.flush()
+
 
 def debug(*args, **kw):
     if DEBUG:
@@ -65,20 +69,22 @@ def debug_json(name, json):
 GROUP_OPEN = []
 
 def group_end():
+    flush()
     assert GROUP_OPEN
     f, title = GROUP_OPEN.pop()
     f()
     f('-'*50)
     f("::endgroup::")
-    f(flush=True)
+    flush()
 
 
 def group_start(title, f=print):
+    flush()
     if GROUP_OPEN:
         group_end()
     f("::group::"+str(title))
     f('-'*50)
-    f(flush=True)
+    flush()
     GROUP_OPEN.append((f, title))
 
 
@@ -112,7 +118,7 @@ def send_github_json(url, mode, json_data=None):
         f = requests.get
 
     if json_data:
-        debug_json(f'Sending to {url}', json_data)
+        debug_json(f'{mode} to {url}', json_data)
     json_data = f(**kw).json()
     debug_json(f'Got from {url}', json_data)
     return json_data
