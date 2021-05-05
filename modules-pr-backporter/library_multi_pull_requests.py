@@ -310,7 +310,8 @@ def handle_workflow_run(http, event_json):
                 continue
 
             elif action == 'keep':
-                new_check[k] = check[k]
+                if check[k] is not None:
+                    new_check[k] = check[k]
 
             elif action == 'replace':
                 if k == 'external_id':
