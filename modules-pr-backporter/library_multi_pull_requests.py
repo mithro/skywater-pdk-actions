@@ -339,14 +339,15 @@ Run of {workflow_run['name']} - {check['name']} on Pull Request #{pr_id} (run #{
 
         pprint.pprint(new_check)
 
-        pr_check_api_url = commits_url.replace('/commits'+SHA_MARKER, f'/check-runs')
 
         if extid not in extid2run:
             print()
             print('Need to *create* this check.')
+            pr_check_api_url = commits_url.replace('/commits'+SHA_MARKER, f'/check-runs')
             r = send_github_json(pr_check_api_url, 'POST', new_check)
         else:
             print('Need to *update* this check.')
+            pr_check_api_url = commits_url.replace(SHA_MARKER, f"/check-runs/{new_check['id']}")
             r = send_github_json(pr_check_api_url, 'PATCH', new_check)
 
         print()
