@@ -40,12 +40,9 @@ from library_patch_submodules import library_clean_submodules
 
 
 # Figure out the GitHub access token.
-ACCESS_TOKEN = os.environ.get('GH_TOKEN', None)
+ACCESS_TOKEN = os.environ.get('GH_APP_TOKEN', None)
 if not ACCESS_TOKEN:
-    ACCESS_TOKEN = os.environ.get('GITHUB_TOKEN', None)
-
-if ACCESS_TOKEN is None:
-    raise SystemError('Did not find an access token of `GH_TOKEN` or `GITHUB_TOKEN`')
+    raise SystemError('Did not find an access token of `GH_APP_TOKEN`')
 
 
 DEBUG = True # os.environ.get('ACTIONS_STEP_DEBUG', 'false').lower() in ('true', '1')
