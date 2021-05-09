@@ -22,10 +22,10 @@ description: >
 runs:
   using: "composite"
   steps:
-  - name: Run The Pull Request Merger
+  - name: Backporter
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
       cd $GITHUB_WORKSPACE
-      python3 ${{ github.action_path }}/library_multi_pull_requests.py $GITHUB_REPOSITORY
+      python3 ${{ github.action_path }}/backport.py $GITHUB_REPOSITORY
     shell: bash
