@@ -36,7 +36,7 @@ from library_submodules import github_auth_set
 from library_submodules import out_v
 from library_submodules import previous_v
 
-from backport_common import backport_hashes
+from backport_common import *
 
 
 __dir__ = os.path.dirname(__file__)
