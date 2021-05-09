@@ -25,6 +25,12 @@ from backport_common import *
 
 
 def handle_pull_request(http, event_json):
+    # Figure out the GitHub access token.
+    access_token = os.environ.get('GH_TOKEN', None)
+    if not access_token:
+        access_token = os.environ.get('GITHUB_TOKEN', None)
+    if access_token is None:
+        raise SystemError('Did not find an access token of `GH_TOKEN` or `GITHUB_TOKEN`')
 
     pull_request_id = event_json['number']
     repo_name = event_json['repository']['full_name']
@@ -95,6 +101,6 @@ def handle_pull_request(http, event_json):
     # Backport the patch
     print("Will try to apply: ", patch_filename)
     library_patch_submodules(
-        ACCESS_TOKEN,
+        access_token,
         repo_name,
         pull_request_id, pr_hash, patch_filename, commitmsg_filename)

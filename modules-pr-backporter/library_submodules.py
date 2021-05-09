@@ -87,8 +87,7 @@ def git_config(gitdir, key, value, level='local'):
 #    git_config(gitdir, 'http.https://github.com/.extraheader', extra_header)
 
 
-def github_auth_set(gitdir, access_token):
-    # git config core.sshCommand "ssh -i ~/.ssh/id_rsa_example -F /dev/null"
+def github_auth_set(gitdir):
     ssh_keys.import_keys()
     #git_config(gitdir, "protocol.allow", "never", level='system')
     #git_config(gitdir, "protocol.ssh.allow", "always", level='system')

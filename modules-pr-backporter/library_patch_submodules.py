@@ -69,7 +69,7 @@ def library_patch_submodules(
 
     # Setup the github authentication using ssh deploy key to allow pushing.
     git_root = os.path.abspath(repo_name.replace('/', '--'))
-    github_auth_set(git_root, access_token)
+    github_auth_set(git_root)
 
     # Clone the repository in blobless mode.
     print(flush=True)
