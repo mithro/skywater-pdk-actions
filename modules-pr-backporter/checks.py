@@ -113,12 +113,12 @@ class CheckConclusion(enum.Enum):
 @dataclass_json
 @dataclass
 class CheckRunOutput:
-    title: str      # Required
-    summary: str    # Required
-    text: str
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    text: Optional[str] = None
 
-    annotations_count: 2
-    annotations_url: str
+    annotations_count: int = 0
+    annotations_url: Optional[str] = None
 
 
 @dataclass_json
