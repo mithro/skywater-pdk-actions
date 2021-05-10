@@ -62,6 +62,9 @@ def handle_event(args):
     elif 'workflow_run' in event_json:
         return handle_workflow_run(http, event_json)
 
+    else:
+        raise SystemError('Unknown event!')
+
 
 if __name__ == "__main__":
     sys.exit(handle_event(sys.argv[1:]))
