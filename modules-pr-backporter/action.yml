@@ -27,8 +27,8 @@ runs:
       GH_TOKEN: ${{ github.token }}
     run: |
       ls /opt/hostedtoolcache/Python
-      ls -l /opt/hostedtoolcache/Python/3.9.5/x64.complete
-      ls -l /opt/hostedtoolcache/Python/3.9.5/x64.complete/
+      ls -l /opt/hostedtoolcache/Python/3.9.5/x64
+      ls -l /opt/hostedtoolcache/Python/3.9.5/x64/
       export PATH=/opt/hostedtoolcache/Python/3.9.5/x64.complete/bin:$PATH
       which python
       pip install -r ${{ github.action_path}}/requirements.txt
