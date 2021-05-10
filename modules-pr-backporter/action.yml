@@ -26,6 +26,7 @@ runs:
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
+      pip install -r ${{ github.action_path}}/requirements.txt
       cd $GITHUB_WORKSPACE
       python3 ${{ github.action_path }}/backport.py $GITHUB_REPOSITORY
     shell: bash
