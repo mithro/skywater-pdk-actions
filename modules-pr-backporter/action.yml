@@ -22,14 +22,11 @@ description: >
 runs:
   using: "composite"
   steps:
-  - name: Setup python
-    uses: actions/setup-python@v2
-    with:
-      python-version: 3.9
   - name: Backporter
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
+      ls /opt/hostedtoolcache/Python/
       pip install -r ${{ github.action_path}}/requirements.txt
       cd $GITHUB_WORKSPACE
       python3 ${{ github.action_path }}/backport.py $GITHUB_REPOSITORY
