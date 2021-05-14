@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
 # Copyright 2020 SkyWater PDK Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,52 +29,6 @@ from typing import Optional
 import checks
 
 from backport_common import *
-
-
-def github_headers(_headers={}):
-    if not _headers:
-        # Figure out the GitHub access token.
-        access_token = os.environ.get('GH_APP_TOKEN', None)
-        if not access_token:
-            raise SystemError('Did not find an access token of `GH_APP_TOKEN`')
-
-        _headers['Authorization'] = 'token ' + access_token
-        _headers['Accept'] = 'application/vnd.github.v3+json'
-    return _headers
-
-
-def get_github_json(url, *args, **kw):
-    full_url = url.format(*args, **kw)
-    return send_github_json(full_url, 'GET')
-
-
-def send_github_json(url, mode, json_data=None):
-    assert mode in ('GET', 'POST', 'PATCH'), f"Unknown mode {mode}"
-
-    if dataclasses.is_dataclass(json_data):
-        json_data = json.loads(json_data.to_json())
-
-    kw = {
-        'url': url,
-        'headers': github_headers(),
-    }
-    if mode == 'POST':
-        f = requests.post
-        assert json_data is not None, json_data
-        kw['json'] = json_data
-    elif mode == 'PATCH':
-        f = requests.patch
-        assert json_data is not None, json_data
-        kw['json'] = json_data
-    elif mode == 'GET':
-        assert json_data is None, json_data
-        f = requests.get
-
-    if json_data:
-        debug_json(f'{mode} to {url}', json_data)
-    json_data = f(**kw).json()
-    debug_json(f'Got from {url}', json_data)
-    return json_data
 
 
 BACKPORT_MARKER = 'BACKPORT'

@@ -1,3 +1,4 @@
 dataclasses_json
 requests
 urllib3
+jwt

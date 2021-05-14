@@ -23,7 +23,7 @@ import dataclasses
 
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json, config
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -37,17 +37,38 @@ def fromisoformat(s):
     >>> fromisoformat('2021-05-03T01:48:37Z')
     datetime.datetime(2021, 5, 3, 1, 48, 37, tzinfo=datetime.timezone.utc)
 
+    >>> repr(fromisoformat(None))
+    'None'
     """
-
+    if not s or s == 'null':
+        return None
     if s.endswith('Z'):
         s = s[:-1]+'+00:00'
     return datetime.fromisoformat(s)
 
 
+def toisoformat(s):
+    """
+
+    >>> toisoformat(datetime(2021, 5, 3, 1, 48, 37, tzinfo=timezone.utc))
+    '2021-05-03T01:48:37Z'
+    >>> toisoformat(datetime(2021, 5, 3, 1, 48, 37, tzinfo=None))
+    '2021-05-03T01:48:37Z'
+    """
+    if s is None:
+        return None
+    else:
+        assert s.tzinfo in (timezone.utc, None), (s.tzinfo, repr(s), str(s))
+        if s.tzinfo == timezone.utc:
+            return datetime.isoformat(s).replace('+00:00', 'Z')
+        elif s.tzinfo is None:
+            return datetime.isoformat(s) + 'Z'
+
+
 def datetime_field():
     return field(
         metadata=config(
-            encoder=datetime.isoformat,
+            encoder=toisoformat,
             decoder=fromisoformat,
         ),
         default = None,
@@ -149,8 +170,8 @@ class CheckRun:
     check_suite: Optional[CheckSuite] = None
 
     status: Optional[CheckStatus] = None
-    started_at: datetime = datetime_field()
-    completed_at: datetime = datetime_field()
+    started_at: Optional[datetime] = datetime_field()
+    completed_at: Optional[datetime] = datetime_field()
     conclusion: Optional[CheckConclusion] = None
 
     pull_requests: Optional[list[dict]] = None
@@ -170,7 +191,7 @@ pprint.PrettyPrinter._dispatch[CheckRun.__repr__] = CheckRun._pprint
 
 @dataclass_json
 @dataclass
-class CheckRunCreateOutputImageAction:
+class CheckRunCreateAction:
     label: str
     description: str
     identifier: str
@@ -182,7 +203,6 @@ class CheckRunCreateOutputImage:
     alt: str
     image_url: str
     caption: str
-    actions: list[CheckRunCreateOutputImageAction]
 
 
 @dataclass_json
@@ -192,8 +212,8 @@ class CheckRunCreateOutput:
     summary: str    # Required
     text: str
 
-    annotations: list[CheckRunAnnotation]
-    images: list[CheckRunCreateOutputImage]
+    annotations: list[CheckRunAnnotation] = field(default_factory=list)
+    images: list[CheckRunCreateOutputImage] = field(default_factory=list)
 
 
 @dataclass_json
@@ -207,16 +227,18 @@ class CheckRunCreate:
     name: str
     head_sha: str
 
-    output: CheckRunCreateOutput
-
     details_url: Optional[str] = None
     external_id: Optional[str] = None
 
     status: Optional[CheckStatus] = CheckStatus.queued
     started_at: Optional[datetime] = datetime_field()
 
-    conclusion: Optional[CheckConclusion] = CheckConclusion.stale
+    conclusion: Optional[CheckConclusion] = None
     completed_at: Optional[datetime] = datetime_field()
+
+    output: Optional[CheckRunCreateOutput] = None
+
+    actions: list[CheckRunCreateAction] = field(default_factory=list)
 
 
     @classmethod
@@ -240,7 +262,7 @@ class CheckRunCreate:
 
         new_check = {}
 
-        # Specail handling for the `output` field
+        # Special handling for the `output` field
         assert 'output' in input_fields, input_fields
         input_fields.remove('output')
         new_check['output'] = CheckRunCreateOutput(

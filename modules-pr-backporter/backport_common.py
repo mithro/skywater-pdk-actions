@@ -16,8 +16,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+import dataclasses
+import json
 import os
+import pathlib
 import pprint
+import requests
 import subprocess
 import sys
 
@@ -163,3 +167,72 @@ def backport_hashes(repo_name, pull_request_id, __cache={}):
     if pull_request_id == '*':
         return out
     return out.get(pull_request_id, [])
+
+
+
+def github_headers(_headers={}):
+    if not _headers:
+        # Figure out the GitHub access token.
+        access_token = os.environ.get('GH_APP_TOKEN', None)
+        if not access_token:
+            import app_token
+            access_token = app_token.get_token()
+            if not access_token:
+                raise SystemError('Did not find an access token of `GH_APP_TOKEN`')
+        _headers['Authorization'] = 'token ' + access_token
+        _headers['Accept'] = 'application/vnd.github.v3+json'
+    return _headers
+
+
+def get_github_json(url, *args, **kw):
+    full_url = url.format(*args, **kw)
+    return send_github_json(full_url, 'GET')
+
+def remove_none(d):
+    """
+    >>> d = {'a': None, 'b': {'c': None, 'd': 1}}
+    >>> remove_none(d)
+    >>> d
+    {'b': {'d': 1}}
+    """
+
+    for k, v in list(d.items()):
+        if isinstance(v, dict):
+            remove_none(v)
+        elif v is None:
+            del d[k]
+
+
+def send_github_json(url, mode, json_data=None):
+    assert mode in ('GET', 'POST', 'PATCH'), f"Unknown mode {mode}"
+
+    if dataclasses.is_dataclass(json_data):
+        json_data = json.loads(json_data.to_json())
+        remove_none(json_data)
+
+    kw = {
+        'url': url,
+        'headers': github_headers(),
+    }
+    if mode == 'POST':
+        f = requests.post
+        assert json_data is not None, json_data
+        kw['json'] = json_data
+    elif mode == 'PATCH':
+        f = requests.patch
+        assert json_data is not None, json_data
+        kw['json'] = json_data
+    elif mode == 'GET':
+        assert json_data is None, json_data
+        f = requests.get
+
+    if json_data:
+        debug_json(f'{mode} to {url}', json_data)
+    json_data = f(**kw).json()
+    debug_json(f'Got from {url}', json_data)
+    return json_data
+
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
