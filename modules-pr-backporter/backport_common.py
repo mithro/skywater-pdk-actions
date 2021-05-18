@@ -170,7 +170,7 @@ def backport_hashes(repo_name, pull_request_id, __cache={}):
 
 
 
-def github_headers(_headers={}):
+def github_headers(preview=None, _headers={}):
     if not _headers:
         # Figure out the GitHub access token.
         access_token = os.environ.get('GH_APP_TOKEN', None)
@@ -180,13 +180,19 @@ def github_headers(_headers={}):
             if not access_token:
                 raise SystemError('Did not find an access token of `GH_APP_TOKEN`')
         _headers['Authorization'] = 'token ' + access_token
-        _headers['Accept'] = 'application/vnd.github.v3+json'
+        if preview is None:
+            _headers['Accept'] = 'application/vnd.github.v3+json'
+        else:
+            print('Preview:', preview)
+            _headers['Accept'] = f'application/vnd.github.{preview}+json'
     return _headers
 
 
 def get_github_json(url, *args, **kw):
+    preview = kw.pop('preview', None)
     full_url = url.format(*args, **kw)
-    return send_github_json(full_url, 'GET')
+    return send_github_json(full_url, 'GET', preview=preview)
+
 
 def remove_none(d):
     """
@@ -203,8 +209,8 @@ def remove_none(d):
             del d[k]
 
 
-def send_github_json(url, mode, json_data=None):
-    assert mode in ('GET', 'POST', 'PATCH'), f"Unknown mode {mode}"
+def send_github_json(url, mode, json_data=None, preview=None):
+    assert mode in ('GET', 'POST', 'PATCH', 'DELETE'), f"Unknown mode {mode}"
 
     if dataclasses.is_dataclass(json_data):
         json_data = json.loads(json_data.to_json())
@@ -212,7 +218,7 @@ def send_github_json(url, mode, json_data=None):
 
     kw = {
         'url': url,
-        'headers': github_headers(),
+        'headers': github_headers(preview=preview),
     }
     if mode == 'POST':
         f = requests.post
@@ -225,6 +231,12 @@ def send_github_json(url, mode, json_data=None):
     elif mode == 'GET':
         assert json_data is None, json_data
         f = requests.get
+    elif mode == 'DELETE':
+        assert json_data is None, json_data
+        f = requests.delete
+        r = f(**kw).data()
+        pprint.pprint(r)
+        return {}
 
     if json_data:
         debug_json(f'{mode} to {url}', json_data)

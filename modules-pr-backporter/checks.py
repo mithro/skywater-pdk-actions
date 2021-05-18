@@ -107,6 +107,7 @@ class CheckRunAnnotation:
     start_column: Optional[int] = None
     end_column: Optional[int] = None
 
+
 @enum.unique
 class CheckStatus(enum.Enum):
     queued      = 'queued'
