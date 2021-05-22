@@ -19,7 +19,7 @@ name: Build Docker Image for Run DRC for cell GDS (using Magic) Action
 on:
   workflow_dispatch:
   push:
-  pull_request_target:
+  pull_request:
 
 jobs:
   # FIXME: Remove once GitHub Container Registry is working.
@@ -68,6 +68,10 @@ jobs:
           - 5000:5000
 
     steps:
+
+    - name: Dump context
+      uses: crazy-max/ghaction-dump-context@v1
+
     - name: Checkout code
       uses: actions/checkout@v2
       with:
